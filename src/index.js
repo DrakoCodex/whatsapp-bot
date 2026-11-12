@@ -14,6 +14,7 @@ import dotenv from 'dotenv';
 import { createSticker } from './sticker.js';
 import { handleFreeCommand } from './commands/free.js';
 import { handleV2Command } from './commands/v2.js';
+import { createGroupSettingsStore, handleGroupModeration } from './groupModeration.js';
 import { getAuthState } from './mongoAuth.js';
 import { consultarDni, consultarTipoCambio } from './services/decolecta.js';
 
@@ -30,6 +31,7 @@ let connectionUpdatedAt = new Date().toISOString();
 const qrAccessToken = process.env.QR_ACCESS_TOKEN || randomBytes(18).toString('hex');
 let reconnectTimer = null;
 let reconnectAttempts = 0;
+let groupSettingsStore = null;
 
 const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -116,6 +118,9 @@ function handleStartupError(err) {
 }
 
 async function startBot() {
+    if (!groupSettingsStore) {
+        groupSettingsStore = await createGroupSettingsStore(process.env.MONGODB_URI);
+    }
     // Carga de estado de sesión (MongoDB Atlas si existe MONGODB_URI, si no local)
     const authSessionName = process.env.AUTH_SESSION_NAME || 'session_us';
     const { state, saveCreds } = await getAuthState(process.env.MONGODB_URI, authSessionName);
@@ -284,6 +289,9 @@ async function startBot() {
             const isQuotedImage = Boolean(
                 msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage
             );
+
+            // La moderación se aplica antes de ejecutar comandos enviados en grupos.
+            if (await handleGroupModeration(sock, from, msg, text, groupSettingsStore)) continue;
 
             // Comandos gratuitos y minijuegos (se procesan antes de los comandos antiguos).
             if (await handleV2Command(sock, from, msg, text)) continue;
