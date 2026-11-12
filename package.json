@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "check": "node --check src/index.js && for file in src/commands/*.js; do node --check \"$file\"; done"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.9",
