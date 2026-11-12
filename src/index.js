@@ -136,6 +136,10 @@ async function startBot() {
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
+        if (connection === 'open') {
+            currentQrDataUrl = null;
+            currentQrUpdatedAt = null;
+        }
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log(`[BOT] Conexión cerrada. Reconectando: ${shouldReconnect}`);
