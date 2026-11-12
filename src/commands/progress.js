@@ -2,7 +2,7 @@ const profiles = new Map();
 const DAY = 24 * 60 * 60 * 1000;
 
 function getProfile(id) {
-  if (!profiles.has(id)) profiles.set(id, { xp: 0, coins: 0, dailyAt: 0, commands: 0 });
+  if (!profiles.has(id)) profiles.set(id, { xp: 0, coins: 0, dailyAt: 0 });
   return profiles.get(id);
 }
 
@@ -31,7 +31,7 @@ export async function handleProgress(sock, from, msg, command) {
   }
 
   if (command === '/perfil') {
-    await send(`🐉 *TU PERFIL DRAKO*\nNivel: *${levelFor(profile.xp)}*\nXP: ${profile.xp}\nDrakoCoins: ${profile.coins} 🪙\nComandos usados: ${profile.commands}\n\nUsa /daily para reclamar tu recompensa diaria.`);
+    await send(`🐉 *TU PERFIL DRAKO*\nNivel: *${levelFor(profile.xp)}*\nXP: ${profile.xp}\nDrakoCoins: ${profile.coins} 🪙\n\nUsa /daily para reclamar tu recompensa diaria.`);
     return true;
   }
 
