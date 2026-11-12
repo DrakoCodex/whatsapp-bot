@@ -81,7 +81,13 @@ Si prefieres usar QR, deja `PAIRING_NUMBER` sin configurar. No compartas el cód
 
 ## Variables de entorno
 
-Configura en el hosting las variables que ya utiliza el proyecto, como `MONGODB_URI`, `DECOLECTA_TOKEN`, `QR_ACCESS_TOKEN`, `PAIRING_NUMBER`, `AUTO_REPLY` y las variables de stickers. No publiques sus valores.
+Configura en el hosting las variables que ya utiliza el proyecto, como `MONGODB_URI`, `DECOLECTA_TOKEN`, `QR_ACCESS_TOKEN`, `PAIRING_NUMBER`, `AUTH_SESSION_NAME`, `AUTO_REPLY` y las variables de stickers. No publiques sus valores.
+
+### Cambiar a una sesión de WhatsApp nueva sin borrar la anterior
+
+`AUTH_SESSION_NAME` permite elegir una colección independiente de MongoDB para las credenciales de Baileys. Si no se configura, se conserva el nombre histórico `session_us` (colección `session_session_us`). Para probar una vinculación limpia, establece por ejemplo `AUTH_SESSION_NAME=drako_clean_20261112`; se utilizará la colección `session_drako_clean_20261112`, sin borrar ni sobrescribir la colección anterior. Usa un nombre nuevo por intento de sesión limpia y guarda el valor elegido para poder reutilizar esa sesión después. El nombre solo admite letras, números, guion y guion bajo (máximo 48 caracteres).
+
+La solicitud del código de vinculación se cancela si el socket se cierra antes de ejecutarse. El panel ya no muestra el texto crudo de errores internos.
 
 ## Desarrollo y pruebas
 
