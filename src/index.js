@@ -63,6 +63,24 @@ server.listen(PORT, () => {
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
+function getDisconnectDiagnostics(lastDisconnect) {
+    const error = lastDisconnect?.error;
+    const statusCode = error?.output?.statusCode ?? error?.statusCode ?? null;
+    const reason = statusCode === null
+        ? 'unknown'
+        : (Object.entries(DisconnectReason).find(([, value]) => value === statusCode)?.[0] || 'unknown');
+    const message = typeof error?.message === 'string'
+        ? error.message.replace(/[\\r\\n\\t]/g, ' ').slice(0, 180)
+        : 'No se recibió mensaje de error';
+
+    return {
+        statusCode,
+        reason,
+        errorName: error?.name || 'Error',
+        message
+    };
+}
+
 function question(query) {
     const rl = readline.createInterface({
         input: process.stdin,
@@ -77,6 +95,7 @@ function question(query) {
 async function startBot() {
     // Carga de estado de sesión (MongoDB Atlas si existe MONGODB_URI, si no local)
     const { state, saveCreds } = await getAuthState(process.env.MONGODB_URI, 'session_us');
+    console.log(`[AUTH] Estado cargado: registered=${Boolean(state.creds.registered)}; cuenta vinculada=${Boolean(state.creds.me?.id)}`);
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`[BOT] Baileys v${version.join('.')} (Última: ${isLatest})`);
 
@@ -167,12 +186,21 @@ async function startBot() {
             connectionUpdatedAt = new Date().toISOString();
         }
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log(`[BOT] Conexión cerrada. Reconectando: ${shouldReconnect}`);
+            const diagnostics = getDisconnectDiagnostics(lastDisconnect);
+            const shouldReconnect = diagnostics.statusCode !== DisconnectReason.loggedOut;
+            console.error('[BOT] Diagnóstico de desconexión:', JSON.stringify({
+                ...diagnostics,
+                reconnecting: shouldReconnect
+            }));
+            connectionStatus = shouldReconnect
+                ? `Conexión cerrada (${diagnostics.statusCode ?? 'sin código'}). Reintentando…`
+                : `WhatsApp rechazó la sesión (${diagnostics.statusCode ?? 'sin código'}).`;
+            connectionUpdatedAt = new Date().toISOString();
+
             if (shouldReconnect) {
-                startBot();
+                startBot().catch((err) => console.error('[FATAL] Error al reconectar:', err.message));
             } else {
-                console.log('[BOT] Sesión cerrada o invalidada.');
+                console.error('[BOT] WhatsApp indicó loggedOut; no se reintentará con estas credenciales.');
             }
         } else if (connection === 'open') {
             console.log('\n======================================================');
