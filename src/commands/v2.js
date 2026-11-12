@@ -1,6 +1,7 @@
 import { handleGames } from './games.js';
 import { handleUtilities } from './utilities.js';
 import { handleGroupCommands } from './groups.js';
+import { handleProgress } from './progress.js';
 
 export async function handleV2Command(sock, from, msg, rawText) {
   const input = String(rawText || '').trim();
@@ -29,7 +30,7 @@ export async function handleV2Command(sock, from, msg, rawText) {
     return true;
   }
 
-  return await handleGames(sock, from, msg, normalized, args, argText)
+  return await handleProgress(sock, from, msg, normalized)\n    || await handleGames(sock, from, msg, normalized, args, argText)
     || await handleUtilities(sock, from, msg, normalized, args, argText)
     || await handleGroupCommands(sock, from, msg, normalized, args, argText);
 }
