@@ -23,6 +23,9 @@ dotenv.config();
 const PORT = process.env.PORT || 3000;
 let currentQrDataUrl = null;
 let currentQrUpdatedAt = null;
+let currentPairingCode = null;
+let connectionStatus = 'Iniciando conexión con WhatsApp…';
+let connectionUpdatedAt = new Date().toISOString();
 const qrAccessToken = process.env.QR_ACCESS_TOKEN || randomBytes(18).toString('hex');
 
 const server = http.createServer(async (req, res) => {
@@ -35,11 +38,13 @@ const server = http.createServer(async (req, res) => {
         }
 
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, no-cache, must-revalidate' });
-        if (!currentQrDataUrl) {
-            return res.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="4"><title>WhatsApp Bot · QR</title><body style="margin:0;background:#0b0b0f;color:#f5f5f5;font:16px Arial;display:grid;min-height:100vh;place-items:center"><main style="text-align:center;padding:28px"><h2>Esperando el QR de WhatsApp…</h2><p>Esta página se actualizará automáticamente.</p><p style="color:#999">Mantén esta pestaña abierta.</p></main></body></html>`);
-        }
-
-        return res.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vincular WhatsApp</title><body style="margin:0;background:#0b0b0f;color:#f5f5f5;font:16px Arial;display:grid;min-height:100vh;place-items:center"><main style="text-align:center;padding:24px"><h2>Vincula tu WhatsApp</h2><p>WhatsApp → Dispositivos vinculados → Vincular dispositivo</p><img alt="QR de WhatsApp" src="${currentQrDataUrl}" style="width:min(82vw,420px);background:white;padding:12px;border-radius:12px"><p style="color:#aaa">El QR caduca; si deja de funcionar, espera a que aparezca uno nuevo.</p><small style="color:#666">Actualizado: ${currentQrUpdatedAt || ''}</small></main></body></html>`);
+        const qrMarkup = currentQrDataUrl
+            ? `<section><h3>Opción 1 · Escanear QR</h3><p>WhatsApp → Dispositivos vinculados → Vincular un dispositivo</p><img alt="QR de WhatsApp" src="${currentQrDataUrl}" style="width:min(82vw,360px);background:white;padding:12px;border-radius:12px"><p style="color:#aaa">El QR caduca. Si deja de funcionar, espera a que se actualice.</p></section>`
+            : '<section><h3>Opción 1 · Código QR</h3><p>El QR todavía no ha llegado desde WhatsApp.</p></section>';
+        const pairingMarkup = currentPairingCode
+            ? `<section style="margin-top:24px;padding:20px;border:1px solid #34343d;border-radius:14px"><h3>Opción 2 · Vincular con número</h3><p>En WhatsApp elige “Vincular con número de teléfono” e introduce:</p><div style="font-size:clamp(28px,8vw,42px);font-weight:700;letter-spacing:7px;background:#17171f;padding:18px;border-radius:10px">${currentPairingCode}</div><p style="color:#aaa">Este código es temporal y privado. No lo compartas.</p></section>`
+            : (process.env.PAIRING_NUMBER ? '<p style="color:#aaa">Solicitando código de vinculación…</p>' : '<p style="color:#777">Para mostrar también un código numérico, configura PAIRING_NUMBER en Render.</p>');
+        return res.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="3"><title>Drako Bot · Vincular WhatsApp</title><body style="margin:0;background:#0b0b0f;color:#f5f5f5;font:16px Arial;display:grid;min-height:100vh;place-items:center"><main style="text-align:center;padding:24px;max-width:560px;width:calc(100% - 32px)"><h2>Vincular WhatsApp</h2><p style="color:#9ee7b0">Estado: ${connectionStatus}</p>${qrMarkup}${pairingMarkup}<small style="color:#666">Última actualización: ${connectionUpdatedAt}</small></main></body></html>`);
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -85,7 +90,12 @@ async function startBot() {
 
     // Escucha siempre los cambios de conexión: el QR también se publica en el panel web.
     sock.ev.on('connection.update', async (update) => {
-        const { qr } = update;
+        const { qr, connection } = update;
+        if (connection) {
+            connectionStatus = connection === 'open' ? 'Conectado correctamente' : connection === 'connecting' ? 'Conectando…' : connectionStatus;
+            connectionUpdatedAt = new Date().toISOString();
+            console.log(`[BOT] Estado de conexión: ${connection}`);
+        }
         if (qr) {
             try {
                 currentQrDataUrl = await QRCode.toDataURL(qr, {
@@ -94,6 +104,8 @@ async function startBot() {
                     errorCorrectionLevel: 'M'
                 });
                 currentQrUpdatedAt = new Date().toISOString();
+                connectionStatus = 'QR listo para escanear';
+                connectionUpdatedAt = currentQrUpdatedAt;
                 console.log('[QR] Nuevo código disponible en el panel web.');
                 if (process.stdin.isTTY) {
                     console.log('\n[BOT] Escanea este código QR con WhatsApp:');
@@ -106,7 +118,7 @@ async function startBot() {
     });
 
     // En hosting no interactivo se genera QR automáticamente; no se bloquea esperando readline.
-    if (!sock.authState.creds.registered) {
+    if (!state.creds.registered) {
         let phoneNumber = process.env.PAIRING_NUMBER;
 
         if (!phoneNumber && process.stdin.isTTY) {
@@ -115,10 +127,15 @@ async function startBot() {
         }
 
         if (phoneNumber) {
+            connectionStatus = 'Solicitando código de vinculación…';
+            connectionUpdatedAt = new Date().toISOString();
             const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
             setTimeout(async () => {
                 try {
                     const code = await sock.requestPairingCode(cleanNumber);
+                    currentPairingCode = code;
+                    connectionStatus = 'Código de vinculación generado';
+                    connectionUpdatedAt = new Date().toISOString();
                     console.log('\n------------------------------------------------------');
                     console.log(` CÓDIGO DE VINCULACIÓN PARA ${cleanNumber}:`);
                     console.log(` >>> ${code} <<<`);
@@ -126,10 +143,14 @@ async function startBot() {
                     console.log(' > Vincular con el número de teléfono e ingresa el código.');
                     console.log('------------------------------------------------------\n');
                 } catch (err) {
+                    connectionStatus = `Error al solicitar código: ${err.message}`;
+                    connectionUpdatedAt = new Date().toISOString();
                     console.error('[BOT] Error al solicitar código de vinculación:', err.message);
                 }
             }, 3000);
         } else {
+            connectionStatus = 'Esperando el QR de WhatsApp…';
+            connectionUpdatedAt = new Date().toISOString();
             console.log('[BOT] Esperando QR de WhatsApp; abre el panel privado indicado arriba.');
         }
     }
@@ -141,6 +162,9 @@ async function startBot() {
         if (connection === 'open') {
             currentQrDataUrl = null;
             currentQrUpdatedAt = null;
+            currentPairingCode = null;
+            connectionStatus = 'Conectado correctamente';
+            connectionUpdatedAt = new Date().toISOString();
         }
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
