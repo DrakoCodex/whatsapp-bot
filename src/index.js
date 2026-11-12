@@ -187,7 +187,7 @@ async function startBot() {
             if (await handleFreeCommand(sock, from, msg, text)) continue;
 
             // 1. COMANDO: STICKER (/s o /sticker o auto-sticker)
-            const stickerCommand = /^\/(s|sticker)(?:\\s|$)/i.test(text);
+            const stickerCommand = /^\/(s|sticker)(?:\s|$)/i.test(text);
             const isStickerCommand = stickerCommand ||
                                      (process.env.AUTO_STICKER === 'true' && isImage && !text.startsWith('/'));
 
