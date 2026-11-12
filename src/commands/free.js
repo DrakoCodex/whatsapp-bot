@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 
 const games = new Map();
@@ -55,7 +55,7 @@ export async function handleFreeCommand(sock, from, msg, rawText) {
       '🇵🇪 *PERÚ*\n/dni <número> · Consulta RENIEC (servicio configurado)\n/tc · Tipo de cambio SUNAT\n/clima <ciudad> · Clima actual\n\n' +
       '🎨 *CREATIVIDAD*\n/s · Sticker desde una imagen\n/stickertexto <frase> · Sticker con texto\n/qr <texto> · Crear QR\n\n' +
       '🎮 *MINIJUEGOS*\n/juegos · Ver juegos\n/adivina · Adivina el número\n/trivia · Pregunta de cultura general\n/ppt piedra|papel|tijera · Duelo\n/dado · Lanzar dado\n/moneda · Cara o cruz\n/8ball <pregunta> · Bola mágica\n\n' +
-      '🧰 *UTILIDADES GRATIS*\n/password [longitud] · Contraseña segura\n/uuid · Identificador aleatorio\n/base64 encode|decode <texto> · Base64\n/texto <texto> · Contar caracteres\n/reversa <texto> · Invertir texto\n/chiste · Chiste aleatorio\n/calc <operación> · Calculadora\n\n' +
+      '🧰 *UTILIDADES GRATIS*\n/password [longitud] · Contraseña segura\n/uuid · Identificador aleatorio\n/base64 encode|decode <texto> · Base64\n/texto <texto> · Contar caracteres\n/reversa <texto> · Invertir texto\n/elige opción 1 | opción 2 · Elegir al azar\n/rango <mín> <máx> · Número aleatorio\n/hora [zona horaria] · Hora local\n/chiste · Chiste aleatorio\n/calc <operación> · Calculadora\n\n' +
       '⚙️ *SISTEMA*\n/ping · Estado de respuesta\n/info · Estado del bot\n\n' +
       '━━━━━━━━━━━━━━━━━━━━\n⚡ Funciones locales gratuitas; algunas consultas existentes requieren sus APIs configuradas.'
     );
@@ -173,6 +173,42 @@ export async function handleFreeCommand(sock, from, msg, rawText) {
 
   if (command === '/chiste') {
     await send(sock, from, msg, `😂 ${pick(jokes)}`);
+    return true;
+  }
+
+  if (command === '/elige') {
+    const options = argText.split('|').map((option) => option.trim()).filter(Boolean).slice(0, 20);
+    if (options.length < 2) {
+      await send(sock, from, msg, 'Uso: /elige Opción 1 | Opción 2 | Opción 3\nIncluye entre 2 y 20 opciones.');
+    } else {
+      await send(sock, from, msg, `🎯 La opción elegida es: *${pick(options)}*`);
+    }
+    return true;
+  }
+
+  if (command === '/rango') {
+    const min = Number(args[0]);
+    const max = Number(args[1]);
+    if (args.length !== 2 || !Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min > max || min < -1_000_000_000 || max > 1_000_000_000) {
+      await send(sock, from, msg, 'Uso: /rango <mínimo> <máximo>\nUsa enteros entre -1.000.000.000 y 1.000.000.000. Ejemplo: /rango 10 50');
+    } else {
+      await send(sock, from, msg, `🎲 Número aleatorio entre ${min} y ${max}: *${randomInt(min, max + 1)}*`);
+    }
+    return true;
+  }
+
+  if (command === '/hora') {
+    const timeZone = argText || 'America/Lima';
+    try {
+      const localTime = new Intl.DateTimeFormat('es', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+        timeZone
+      }).format(new Date());
+      await send(sock, from, msg, `🕒 Hora en ${timeZone}:\n${localTime}`);
+    } catch {
+      await send(sock, from, msg, 'Zona horaria inválida. Ejemplo: /hora America/Caracas o /hora America/Lima');
+    }
     return true;
   }
 

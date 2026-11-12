@@ -41,6 +41,9 @@ Bot de WhatsApp basado en Node.js y Baileys. Incluye stickers, QR, consultas con
 | `/reversa <texto>` | Invertir texto |
 | `/temperatura <valor> C|F` | Convertir Celsius/Fahrenheit |
 | `/fecha` | Fecha y hora de Perú |
+| `/hora [zona horaria]` | Hora en una zona IANA, por ejemplo `America/Caracas` |
+| `/elige opción 1 | opción 2` | Elegir una opción al azar |
+| `/rango <mínimo> <máximo>` | Elegir un entero aleatorio entre los límites |
 | `/password [longitud]`, `/uuid` | Generadores locales |
 
 ### 👥 Herramientas de grupo
@@ -77,7 +80,9 @@ Baileys permite vincular la cuenta mediante un código de emparejamiento. Esta o
 4. En el teléfono que tiene esa cuenta de WhatsApp, abre **Ajustes → Dispositivos vinculados → Vincular un dispositivo → Vincular con número de teléfono** e introduce el código mostrado en Render.
 5. Cuando la conexión se complete, Baileys guardará las credenciales usando el almacenamiento configurado (`MONGODB_URI` si está disponible).
 
-Si prefieres usar QR, deja `PAIRING_NUMBER` sin configurar. No compartas el código de vinculación ni las credenciales de sesión: permiten acceder a tu cuenta.
+El código se solicita cuando Baileys emite el QR y el socket está listo, para evitar pedirlo demasiado pronto. Si prefieres usar QR, deja `PAIRING_NUMBER` sin configurar y abre el enlace privado `/qr?token=...` que aparece en los logs del servicio. El endpoint principal solo indica dónde encontrarlo; no publiques el token.
+
+No compartas el código de vinculación ni las credenciales de sesión: permiten acceder a tu cuenta.
 
 ## Variables de entorno
 
@@ -87,7 +92,7 @@ Configura en el hosting las variables que ya utiliza el proyecto, como `MONGODB_
 
 `AUTH_SESSION_NAME` permite elegir una colección independiente de MongoDB para las credenciales de Baileys. Si no se configura, se conserva el nombre histórico `session_us` (colección `session_session_us`). Para probar una vinculación limpia, establece por ejemplo `AUTH_SESSION_NAME=drako_clean_20261112`; se utilizará la colección `session_drako_clean_20261112`, sin borrar ni sobrescribir la colección anterior. Usa un nombre nuevo por intento de sesión limpia y guarda el valor elegido para poder reutilizar esa sesión después. El nombre solo admite letras, números, guion y guion bajo (máximo 48 caracteres).
 
-La solicitud del código de vinculación se cancela si el socket se cierra antes de ejecutarse. El panel ya no muestra el texto crudo de errores internos.
+Si WhatsApp rechaza una sesión guardada, el panel muestra cómo iniciar una sesión nueva con un `AUTH_SESSION_NAME` distinto; la colección anterior no se borra. Los reintentos ante desconexiones transitorias usan espera progresiva y el panel limpia los QR que ya caducaron.
 
 ## Desarrollo y pruebas
 
