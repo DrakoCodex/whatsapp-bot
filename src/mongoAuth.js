@@ -47,7 +47,8 @@ export async function getAuthState(mongoUri, sessionName = 'default') {
                 }
                 return null;
             } catch (error) {
-                console.error(`[AUTH] Error leyendo ${id} de Mongo:`, error.message);
+                const recordType = id === 'creds' ? 'credenciales' : 'clave de sesión';
+                console.error(`[AUTH] Error leyendo ${recordType} de Mongo (${error.name}): ${error.message}`);
                 return null;
             }
         };
@@ -60,7 +61,9 @@ export async function getAuthState(mongoUri, sessionName = 'default') {
             }
         };
 
-        const creds = (await readData('creds')) || initAuthCreds();
+        const storedCreds = await readData('creds');
+        const creds = storedCreds || initAuthCreds();
+        console.log(`[AUTH] Credenciales ${storedCreds ? 'recuperadas de MongoDB' : 'no encontradas; se inicializa una sesión nueva'}; registered=${Boolean(creds.registered)}`);
 
         return {
             state: {
