@@ -25,8 +25,11 @@ let currentQrDataUrl = null;
 let currentQrUpdatedAt = null;
 let currentPairingCode = null;
 let connectionStatus = 'Iniciando conexión con WhatsApp…';
+let connectionHint = 'Espera mientras WhatsApp inicia la conexión.';
 let connectionUpdatedAt = new Date().toISOString();
 const qrAccessToken = process.env.QR_ACCESS_TOKEN || randomBytes(18).toString('hex');
+let reconnectTimer = null;
+let reconnectAttempts = 0;
 
 const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -43,15 +46,15 @@ const server = http.createServer(async (req, res) => {
             : '<section><h3>Opción 1 · Código QR</h3><p>El QR todavía no ha llegado desde WhatsApp.</p></section>';
         const pairingMarkup = currentPairingCode
             ? `<section style="margin-top:24px;padding:20px;border:1px solid #34343d;border-radius:14px"><h3>Opción 2 · Vincular con número</h3><p>En WhatsApp elige “Vincular con número de teléfono” e introduce:</p><div style="font-size:clamp(28px,8vw,42px);font-weight:700;letter-spacing:7px;background:#17171f;padding:18px;border-radius:10px">${currentPairingCode}</div><p style="color:#aaa">Este código es temporal y privado. No lo compartas.</p></section>`
-            : (process.env.PAIRING_NUMBER ? '<p style="color:#aaa">Solicitando código de vinculación…</p>' : '<p style="color:#777">Para mostrar también un código numérico, configura PAIRING_NUMBER en Render.</p>');
-        return res.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="3"><title>Drako Bot · Vincular WhatsApp</title><body style="margin:0;background:#0b0b0f;color:#f5f5f5;font:16px Arial;display:grid;min-height:100vh;place-items:center"><main style="text-align:center;padding:24px;max-width:560px;width:calc(100% - 32px)"><h2>Vincular WhatsApp</h2><p style="color:#9ee7b0">Estado: ${connectionStatus}</p>${qrMarkup}${pairingMarkup}<small style="color:#666">Última actualización: ${connectionUpdatedAt}</small></main></body></html>`);
+            : (process.env.PAIRING_NUMBER ? '<p style="color:#aaa">El código aparecerá cuando WhatsApp esté listo. Requiere un PAIRING_NUMBER válido y una sesión nueva.</p>' : '<p style="color:#777">Para mostrar también un código numérico, configura PAIRING_NUMBER en Render.</p>');
+        return res.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="3"><title>Drako Bot · Vincular WhatsApp</title><body style="margin:0;background:#0b0b0f;color:#f5f5f5;font:16px Arial;display:grid;min-height:100vh;place-items:center"><main style="text-align:center;padding:24px;max-width:560px;width:calc(100% - 32px)"><h2>Vincular WhatsApp</h2><p style="color:#9ee7b0">Estado: ${connectionStatus}</p><p style="color:#aaa">${connectionHint}</p>${qrMarkup}${pairingMarkup}<small style="color:#666">Última actualización: ${connectionUpdatedAt}</small></main></body></html>`);
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({
         status: 'online',
         bot: 'WhatsApp Bot US',
-        qr: '/qr?token=TOKEN_PRIVADO',
+        qr_panel: 'El enlace privado aparece en los logs del servicio. No uses el marcador TOKEN_PRIVADO.',
         time: new Date().toISOString(),
         auth_mode: process.env.MONGODB_URI ? 'MongoDB Atlas' : 'Local Disk'
     }));
@@ -70,7 +73,7 @@ function getDisconnectDiagnostics(lastDisconnect) {
         ? 'unknown'
         : (Object.entries(DisconnectReason).find(([, value]) => value === statusCode)?.[0] || 'unknown');
     const message = typeof error?.message === 'string'
-        ? error.message.replace(/[\\r\\n\\t]/g, ' ').slice(0, 180)
+        ? error.message.replace(/[\r\n\t]/g, ' ').slice(0, 180)
         : 'No se recibió mensaje de error';
 
     return {
@@ -92,6 +95,26 @@ function question(query) {
     }));
 }
 
+function scheduleReconnect() {
+    if (reconnectTimer) return;
+    const delayMs = Math.min(30_000, 1_000 * (2 ** Math.min(reconnectAttempts, 5)));
+    reconnectAttempts += 1;
+    connectionStatus = `Reintentando conexión en ${Math.ceil(delayMs / 1000)} s…`;
+    connectionUpdatedAt = new Date().toISOString();
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        startBot().catch(handleStartupError);
+    }, delayMs);
+}
+
+function handleStartupError(err) {
+    console.error('[FATAL] Error al iniciar el bot:', err.message);
+    connectionStatus = 'No se pudo iniciar WhatsApp.';
+    connectionHint = 'El servicio reintentará automáticamente. Revisa los logs si el problema continúa.';
+    connectionUpdatedAt = new Date().toISOString();
+    scheduleReconnect();
+}
+
 async function startBot() {
     // Carga de estado de sesión (MongoDB Atlas si existe MONGODB_URI, si no local)
     const authSessionName = process.env.AUTH_SESSION_NAME || 'session_us';
@@ -99,6 +122,18 @@ async function startBot() {
     console.log(`[AUTH] Estado cargado: registered=${Boolean(state.creds.registered)}; cuenta vinculada=${Boolean(state.creds.me?.id)}`);
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`[BOT] Baileys v${version.join('.')} (Última: ${isLatest})`);
+
+    let phoneNumber = process.env.PAIRING_NUMBER || '';
+    if (!state.creds.registered && !phoneNumber && process.stdin.isTTY) {
+        console.log('\nMODO DE VINCULACIÓN: escribe tu número para recibir código o ENTER para QR.');
+        phoneNumber = await question('Número con código de país o ENTER: ');
+    }
+    const cleanNumber = phoneNumber.replace(/\D/g, '');
+    const validPairingNumber = /^\d{7,15}$/.test(cleanNumber);
+    if (phoneNumber && !validPairingNumber) {
+        connectionHint = 'PAIRING_NUMBER debe incluir el código de país y tener entre 7 y 15 dígitos. El QR seguirá disponible si la sesión es nueva.';
+        console.error('[BOT] PAIRING_NUMBER inválido: usa solo el número internacional con código de país.');
+    }
 
     const sock = makeWASocket({
         version,
@@ -108,95 +143,95 @@ async function startBot() {
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
-    // Escucha siempre los cambios de conexión: el QR también se publica en el panel web.
+    // Baileys emite el QR cuando el socket ya está listo. Ese mismo evento permite
+    // solicitar un código de vinculación sin competir con el arranque de la conexión.
+    let pairingCodeRequested = false;
     let socketClosed = false;
-    let pairingTimeout = null;
+    let socketOpen = false;
+    let qrGeneration = 0;
     sock.ev.on('connection.update', async (update) => {
-        const { qr, connection } = update;
-        if (connection === 'close') {
-            socketClosed = true;
-            if (pairingTimeout) clearTimeout(pairingTimeout);
-        }
+        const { qr, connection, lastDisconnect } = update;
         if (connection) {
             connectionStatus = connection === 'open' ? 'Conectado correctamente' : connection === 'connecting' ? 'Conectando…' : connectionStatus;
             connectionUpdatedAt = new Date().toISOString();
             console.log(`[BOT] Estado de conexión: ${connection}`);
         }
         if (qr) {
+            const generation = ++qrGeneration;
             try {
-                currentQrDataUrl = await QRCode.toDataURL(qr, {
+                const qrDataUrl = await QRCode.toDataURL(qr, {
                     width: 440,
                     margin: 2,
                     errorCorrectionLevel: 'M'
                 });
-                currentQrUpdatedAt = new Date().toISOString();
-                connectionStatus = 'QR listo para escanear';
-                connectionUpdatedAt = currentQrUpdatedAt;
-                console.log('[QR] Nuevo código disponible en el panel web.');
-                if (process.stdin.isTTY) {
-                    console.log('\n[BOT] Escanea este código QR con WhatsApp:');
-                    qrcodeTerminal.generate(qr, { small: true });
+                if (!socketClosed && generation === qrGeneration) {
+                    currentQrDataUrl = qrDataUrl;
+                    currentQrUpdatedAt = new Date().toISOString();
+                    connectionStatus = 'QR listo para escanear';
+                    connectionHint = 'En WhatsApp abre Dispositivos vinculados → Vincular un dispositivo y escanea el QR.';
+                    connectionUpdatedAt = currentQrUpdatedAt;
+                    console.log('[QR] Nuevo código disponible en el panel web.');
+                    if (process.stdin.isTTY) {
+                        console.log('\n[BOT] Escanea este código QR con WhatsApp:');
+                        qrcodeTerminal.generate(qr, { small: true });
+                    }
                 }
             } catch (err) {
                 console.error('[QR] No se pudo preparar la imagen:', err.message);
             }
-        }
-    });
 
-    // En hosting no interactivo se genera QR automáticamente; no se bloquea esperando readline.
-    if (!state.creds.registered) {
-        let phoneNumber = process.env.PAIRING_NUMBER;
-
-        if (!phoneNumber && process.stdin.isTTY) {
-            console.log('\nMODO DE VINCULACIÓN: escribe tu número para recibir código o ENTER para QR.');
-            phoneNumber = await question('Número con código de país o ENTER: ');
-        }
-
-        if (phoneNumber) {
-            connectionStatus = 'Solicitando código de vinculación…';
-            connectionUpdatedAt = new Date().toISOString();
-            const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-            pairingTimeout = setTimeout(async () => {
-                if (socketClosed) {
-                    console.warn('[BOT] Se omitió la solicitud de código: el socket ya está cerrado.');
-                    return;
-                }
+            if (!state.creds.registered && validPairingNumber && !pairingCodeRequested && !socketClosed) {
+                pairingCodeRequested = true;
+                connectionStatus = 'Solicitando código de vinculación…';
+                connectionHint = 'Introduce el número de 8 dígitos en WhatsApp → Dispositivos vinculados → Vincular con número de teléfono.';
+                connectionUpdatedAt = new Date().toISOString();
                 try {
                     const code = await sock.requestPairingCode(cleanNumber);
+                    if (socketClosed || socketOpen) return;
                     currentPairingCode = code;
                     connectionStatus = 'Código de vinculación generado';
                     connectionUpdatedAt = new Date().toISOString();
                     console.log('\n------------------------------------------------------');
                     console.log(` CÓDIGO DE VINCULACIÓN PARA ${cleanNumber}:`);
                     console.log(` >>> ${code} <<<`);
-                    console.log(' En WhatsApp: Ajustes > Dispositivos vinculados > Vincular un dispositivo');
-                    console.log(' > Vincular con el número de teléfono e ingresa el código.');
+                    console.log(' En WhatsApp: Ajustes > Dispositivos vinculados > Vincular con el número de teléfono.');
                     console.log('------------------------------------------------------\n');
                 } catch (err) {
-                    connectionStatus = 'No se pudo solicitar el código. Revisa los logs del servicio.';
+                    if (socketClosed || socketOpen) return;
+                    connectionStatus = currentQrDataUrl
+                        ? 'Código no disponible; puedes escanear el QR.'
+                        : 'No se pudo solicitar el código. Revisa los logs del servicio.';
+                    connectionHint = currentQrDataUrl
+                        ? 'Usa el QR de esta página. Si tampoco funciona, cambia AUTH_SESSION_NAME por un nombre nuevo y reinicia.'
+                        : 'Revisa los logs. Si WhatsApp rechazó la sesión guardada, cambia AUTH_SESSION_NAME por un nombre nuevo y reinicia.';
                     connectionUpdatedAt = new Date().toISOString();
                     console.error('[BOT] Error al solicitar código de vinculación:', err.message);
                 }
-            }, 3000);
-        } else {
-            connectionStatus = 'Esperando el QR de WhatsApp…';
-            connectionUpdatedAt = new Date().toISOString();
-            console.log('[BOT] Esperando QR de WhatsApp; abre el panel privado indicado arriba.');
+            }
         }
-    }
-
-    sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
         if (connection === 'open') {
+            socketClosed = false;
+            socketOpen = true;
+            qrGeneration += 1;
+            reconnectAttempts = 0;
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
             currentQrDataUrl = null;
             currentQrUpdatedAt = null;
             currentPairingCode = null;
             connectionStatus = 'Conectado correctamente';
+            connectionHint = 'La cuenta de WhatsApp quedó vinculada.';
             connectionUpdatedAt = new Date().toISOString();
         }
         if (connection === 'close') {
+            socketClosed = true;
+            socketOpen = false;
+            qrGeneration += 1;
+            currentQrDataUrl = null;
+            currentQrUpdatedAt = null;
+            currentPairingCode = null;
             const diagnostics = getDisconnectDiagnostics(lastDisconnect);
             const shouldReconnect = diagnostics.statusCode !== DisconnectReason.loggedOut;
             console.error('[BOT] Diagnóstico de desconexión:', JSON.stringify({
@@ -206,10 +241,13 @@ async function startBot() {
             connectionStatus = shouldReconnect
                 ? `Conexión cerrada (${diagnostics.statusCode ?? 'sin código'}). Reintentando…`
                 : `WhatsApp rechazó la sesión (${diagnostics.statusCode ?? 'sin código'}).`;
+            connectionHint = shouldReconnect
+                ? 'El bot volverá a intentar conectarse automáticamente.'
+                : 'La sesión guardada fue rechazada. En Render, asigna un AUTH_SESSION_NAME nuevo y reinicia para vincular de nuevo sin borrar la sesión anterior.';
             connectionUpdatedAt = new Date().toISOString();
 
             if (shouldReconnect) {
-                startBot().catch((err) => console.error('[FATAL] Error al reconectar:', err.message));
+                scheduleReconnect();
             } else {
                 console.error('[BOT] WhatsApp indicó loggedOut; no se reintentará con estas credenciales.');
             }
@@ -220,6 +258,8 @@ async function startBot() {
             console.log('======================================================\n');
         }
     });
+
+    sock.ev.on('creds.update', saveCreds);
 
     // Procesamiento de mensajes entrantes
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -495,4 +535,4 @@ async function startBot() {
     });
 }
 
-startBot().catch((err) => console.error('[FATAL] Error en el bot:', err));
+startBot().catch(handleStartupError);
