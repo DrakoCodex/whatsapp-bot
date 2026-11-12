@@ -147,7 +147,12 @@ export async function handleFreeCommand(sock, from, msg, rawText) {
   }
 
   if (command === '/dado') {
-    const sides = Math.min(100, Math.max(2, Number(args[0]) || 6));
+    const requestedSides = args[0] === undefined ? 6 : Number(args[0]);
+    if (!Number.isInteger(requestedSides) || requestedSides < 2 || requestedSides > 100) {
+      await send(sock, from, msg, 'El dado debe tener entre 2 y 100 caras enteras. Ejemplo: /dado 20');
+      return true;
+    }
+    const sides = requestedSides;
     await send(sock, from, msg, `🎲 Salió: *${Math.floor(Math.random() * sides) + 1}* (dado de ${sides} caras).`);
     return true;
   }
