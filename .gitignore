@@ -1,0 +1,5 @@
+node_modules/
+.env
+session_auth/
+data/group-moderation.json
+data/group-moderation.json.tmp

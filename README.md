@@ -23,7 +23,7 @@ Bot de WhatsApp basado en Node.js y Baileys. Incluye stickers, QR, consultas con
 | --- | --- |
 | `/adivina`, `/adivina <1-10>` | Adivina el número secreto |
 | `/trivia`, `/respuesta <texto>` | Pregunta de cultura general |
-| `/ppt piedra|papel|tijera` | Piedra, papel o tijera |
+| `/ppt piedra\|papel\|tijera` | Piedra, papel o tijera |
 | `/ahorcado`, `/letra <letra>` | Ahorcado |
 | `/tateti`, `/jugar <1-9>` | Tres en raya contra el bot |
 | `/dado [caras]`, `/moneda` | Lanzamientos aleatorios |
@@ -34,8 +34,8 @@ Bot de WhatsApp basado en Node.js y Baileys. Incluye stickers, QR, consultas con
 | --- | --- |
 | `/calc <operación>` | Calculadora existente |
 | `/porcentaje <porcentaje> <cantidad>` | Calcula porcentajes |
-| `/binario encode|decode <texto>` | Conversor binario |
-| `/base64 encode|decode <texto>` | Conversor Base64 |
+| `/binario encode\|decode <texto>` | Conversor binario |
+| `/base64 encode\|decode <texto>` | Conversor Base64 |
 | `/mayus <texto>`, `/minus <texto>` | Cambiar mayúsculas/minúsculas |
 | `/contar <texto>`, `/texto <texto>` | Contar texto |
 | `/reversa <texto>` | Invertir texto |
@@ -49,12 +49,15 @@ Bot de WhatsApp basado en Node.js y Baileys. Incluye stickers, QR, consultas con
 ### 👥 Herramientas de grupo
 | Comando | Función |
 | --- | --- |
-| `/reglas` | Muestra reglas básicas |
-| `/encuesta pregunta | opción 1 | opción 2` | Crea una encuesta por texto |
+| `/reglas [texto]` | Muestra o cambia las reglas del grupo |
+| `/encuesta pregunta \| opción 1 \| opción 2` | Crea una encuesta por texto |
 | `/votar <número>`, `/resultados` | Vota y consulta resultados |
 | `/sorteo @miembros` | Selecciona un ganador |
 | `/equipos @miembros` | Divide participantes en dos equipos |
 | `/turno @miembros` | Crea un orden aleatorio |
+| `/moderacion activar`, `/moderacion desactivar` | Activa o desactiva los filtros del grupo |
+| `/moderacion enlaces\|stickers\|ofensas on\|off` | Configura cada filtro (solo administradores) |
+| `/moderacion palabras agregar\|quitar <término>` | Añade o quita términos personalizados |
 
 ### ⚙️ Sistema
 | Comando | Función |
@@ -62,12 +65,23 @@ Bot de WhatsApp basado en Node.js y Baileys. Incluye stickers, QR, consultas con
 | `/menu`, `/ayuda`, `/juegos` | Menús de ayuda |
 | `/ping`, `/info` | Estado y latencia |
 
+### Configurar moderación en un grupo
+
+1. Agrega el bot al grupo y asígnale el rol de administrador para que pueda borrar mensajes.
+2. Un administrador del grupo envía `/moderacion activar` para activar los filtros de enlaces, stickers y lenguaje ofensivo.
+3. Usa `/reglas <texto>` para guardar las reglas visibles en ese grupo.
+4. Usa `/moderacion palabras agregar <término o frase>` para ampliar la lista local de términos bloqueados.
+
+Los filtros se pueden cambiar por separado con `/moderacion enlaces|stickers|ofensas on|off` y revisar con `/moderacion estado`. El bot borra el contenido detectado y avisa al autor; no expulsa miembros. Los mensajes de administradores no se filtran.
+
 ## Compatibilidad y límites
 
 - El menú usa texto y comandos para funcionar en clientes de WhatsApp compatibles con Baileys; no depende de botones interactivos experimentales.
 - No se agregan dependencias ni claves API de pago.
 - Los juegos, encuestas y sorteos mantienen estado temporal en memoria: se pierden cuando el proceso se reinicia. No son un sistema de votación anónima ni persistente.
 - Las herramientas de grupo funcionan en grupos; los sorteos/equipos aceptan menciones o nombres separados por comas.
+- La moderación está apagada por defecto y se configura por grupo. Para activarla, el usuario que envía el comando y el bot deben ser administradores; el bot necesita ese rol para borrar mensajes. Los mensajes de administradores no se filtran. Las reglas y ajustes se guardan en MongoDB cuando `MONGODB_URI` existe, o en `data/group-moderation.json` como alternativa local.
+- Los filtros borran enlaces, stickers y términos ofensivos cuando están activados, y avisan al autor. El detector de ofensas usa una lista inicial y permite agregar términos específicos del grupo.
 - Las consultas DNI y tipo de cambio dependen de la configuración externa existente. No uses el bot para consultar o divulgar datos personales sin autorización.
 
 ## Vincular WhatsApp mediante código (sin QR)
