@@ -1,46 +1,82 @@
-# WhatsApp Bot - Número US (Stickers, Reniec, Sunat & Utilidades)
+# Drako Bot — WhatsApp
 
-Bot de WhatsApp optimizado para correr con números de EE.UU., persistencia en MongoDB Atlas para despliegues gratuitos en Render/Koyeb, consultas oficiales de Reniec / Sunat vía Decolecta, generador de stickers y utilidades.
+Bot de WhatsApp basado en Node.js y Baileys. Incluye stickers, QR, consultas configuradas para Perú, utilidades locales y minijuegos.
 
-## Lista de Comandos en WhatsApp
+## Comandos
 
-### 🇵🇪 Consultas Perú (Decolecta API)
-| Comando | Descripción | Ejemplo |
-| --- | --- | --- |
-| `/dni <número>` | Consulta nombres completos, apellido paterno y materno en RENIEC | `/dni 46027897` |
-| `/dolar` o `/tc` o `/sunat` | Tipo de cambio oficial SUNAT del día (compra / venta) | `/dolar` |
-| `/dolar YYYY-MM-DD` | Tipo de cambio oficial en una fecha específica | `/dolar 2026-05-10` |
-
-### 🎨 Stickers & Multimedia
-| Comando | Descripción |
+### 🇵🇪 Perú y consultas conectadas
+| Comando | Función |
 | --- | --- |
-| `/s` o `/sticker` | Convierte la foto enviada o citada en un sticker WebP (512x512) |
-| `/qr <texto o link>` | Genera una imagen con código QR listo para escanear |
+| `/dni <número>` | Consulta RENIEC mediante Decolecta (requiere token y autorización para usar los datos) |
+| `/tc`, `/dolar`, `/sunat` | Tipo de cambio mediante Decolecta |
+| `/clima <ciudad>` | Consulta del clima en wttr.in |
 
-### 🛠️ Utilidades & Herramientas
-| Comando | Descripción | Ejemplo |
-| --- | --- | --- |
-| `/calc <operación>` | Calculadora matemática rápida | `/calc 150 * 3.41` |
-| `/clima <ciudad>` | Clima y temperatura en tiempo real | `/clima Lima` |
+### 🎨 Creatividad
+| Comando | Función |
+| --- | --- |
+| `/s`, `/sticker` | Convierte una imagen enviada o citada en sticker |
+| `/stickertexto <frase>` | Genera un sticker con texto |
+| `/qr <texto o URL>` | Genera un código QR |
+
+### 🎮 Juegos
+| Comando | Función |
+| --- | --- |
+| `/adivina`, `/adivina <1-10>` | Adivina el número secreto |
+| `/trivia`, `/respuesta <texto>` | Pregunta de cultura general |
+| `/ppt piedra|papel|tijera` | Piedra, papel o tijera |
+| `/ahorcado`, `/letra <letra>` | Ahorcado |
+| `/tateti`, `/jugar <1-9>` | Tres en raya contra el bot |
+| `/dado [caras]`, `/moneda` | Lanzamientos aleatorios |
+| `/8ball <pregunta>`, `/chiste` | Bola mágica y chiste |
+
+### 🧰 Utilidades gratuitas (locales)
+| Comando | Función |
+| --- | --- |
+| `/calc <operación>` | Calculadora existente |
+| `/porcentaje <porcentaje> <cantidad>` | Calcula porcentajes |
+| `/binario encode|decode <texto>` | Conversor binario |
+| `/base64 encode|decode <texto>` | Conversor Base64 |
+| `/mayus <texto>`, `/minus <texto>` | Cambiar mayúsculas/minúsculas |
+| `/contar <texto>`, `/texto <texto>` | Contar texto |
+| `/reversa <texto>` | Invertir texto |
+| `/temperatura <valor> C|F` | Convertir Celsius/Fahrenheit |
+| `/fecha` | Fecha y hora de Perú |
+| `/password [longitud]`, `/uuid` | Generadores locales |
+
+### 👥 Herramientas de grupo
+| Comando | Función |
+| --- | --- |
+| `/reglas` | Muestra reglas básicas |
+| `/encuesta pregunta | opción 1 | opción 2` | Crea una encuesta por texto |
+| `/votar <número>`, `/resultados` | Vota y consulta resultados |
+| `/sorteo @miembros` | Selecciona un ganador |
+| `/equipos @miembros` | Divide participantes en dos equipos |
+| `/turno @miembros` | Crea un orden aleatorio |
 
 ### ⚙️ Sistema
-| Comando | Descripción |
+| Comando | Función |
 | --- | --- |
-| `/menu` o `/ayuda` | Despliega el menú con todos los comandos disponibles |
-| `/ping` | Mide la latencia de respuesta del bot |
-| `/info` | Muestra estado de memoria, tiempo activo y modo de sesión |
+| `/menu`, `/ayuda`, `/juegos` | Menús de ayuda |
+| `/ping`, `/info` | Estado y latencia |
 
----
+## Compatibilidad y límites
 
-## Configuración de MongoDB Atlas (Persistencia Gratuita para Render)
+- El menú usa texto y comandos para funcionar en clientes de WhatsApp compatibles con Baileys; no depende de botones interactivos experimentales.
+- No se agregan dependencias ni claves API de pago.
+- Los juegos, encuestas y sorteos mantienen estado temporal en memoria: se pierden cuando el proceso se reinicia. No son un sistema de votación anónima ni persistente.
+- Las herramientas de grupo funcionan en grupos; los sorteos/equipos aceptan menciones o nombres separados por comas.
+- Las consultas DNI y tipo de cambio dependen de la configuración externa existente. No uses el bot para consultar o divulgar datos personales sin autorización.
 
-1. En tu panel de MongoDB Atlas, ve a **Database** y haz clic en **Connect**.
-2. Selecciona **Drivers**.
-3. Selecciona Driver: **Node.js** (Versión 5.5 o posterior).
-4. Copia la cadena de conexión (*Connection String*), que tiene esta forma:
-   ```text
-   mongodb+srv://<usuario>:<password>@cluster0.xxxx.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
-   ```
-5. Reemplaza `<usuario>` y `<password>` con tu usuario de base de datos.
-6. En **Network Access** (menú izquierdo de MongoDB Atlas), haz clic en **Add IP Address** y elige **Allow Access from Anywhere** (`0.0.0.0/0`) para que Render pueda conectarse.
-7. Agrega esa URL en tu `.env` o en las variables de entorno de Render como `MONGODB_URI`.
+## Variables de entorno
+
+Configura en el hosting las variables que ya utiliza el proyecto, como `MONGODB_URI`, `DECOLECTA_TOKEN`, `QR_ACCESS_TOKEN`, `PAIRING_NUMBER`, `AUTO_REPLY` y las variables de stickers. No publiques sus valores.
+
+## Desarrollo y pruebas
+
+```bash
+npm install
+npm test
+npm start
+```
+
+Las pruebas usan el módulo integrado `node:test` de Node.js y no requieren servicios externos.
