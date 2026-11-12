@@ -8,6 +8,7 @@ import qrcodeTerminal from 'qrcode-terminal';
 import QRCode from 'qrcode';
 import readline from 'readline';
 import http from 'http';
+import { randomBytes } from 'crypto';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { createSticker } from './sticker.js';
@@ -16,19 +17,41 @@ import { consultarDni, consultarTipoCambio } from './services/decolecta.js';
 
 dotenv.config();
 
-// Servidor HTTP simple para Health Check en plataformas Cloud (Render, Koyeb)
+// Servidor HTTP: health check y panel web para escanear el QR de WhatsApp.
 const PORT = process.env.PORT || 3000;
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+let currentQrDataUrl = null;
+let currentQrUpdatedAt = null;
+const qrAccessToken = process.env.QR_ACCESS_TOKEN || randomBytes(18).toString('hex');
+
+const server = http.createServer(async (req, res) => {
+    const requestUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+
+    if (requestUrl.pathname === '/qr') {
+        if (requestUrl.searchParams.get('token') !== qrAccessToken) {
+            res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+            return res.end('Acceso denegado. Usa el enlace QR privado mostrado en los logs del servicio.');
+        }
+
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, no-cache, must-revalidate' });
+        if (!currentQrDataUrl) {
+            return res.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="4"><title>WhatsApp Bot · QR</title><body style="margin:0;background:#0b0b0f;color:#f5f5f5;font:16px Arial;display:grid;min-height:100vh;place-items:center"><main style="text-align:center;padding:28px"><h2>Esperando el QR de WhatsApp…</h2><p>Esta página se actualizará automáticamente.</p><p style="color:#999">Mantén esta pestaña abierta.</p></main></body></html>`);
+        }
+
+        return res.end(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vincular WhatsApp</title><body style="margin:0;background:#0b0b0f;color:#f5f5f5;font:16px Arial;display:grid;min-height:100vh;place-items:center"><main style="text-align:center;padding:24px"><h2>Vincula tu WhatsApp</h2><p>WhatsApp → Dispositivos vinculados → Vincular dispositivo</p><img alt="QR de WhatsApp" src="${currentQrDataUrl}" style="width:min(82vw,420px);background:white;padding:12px;border-radius:12px"><p style="color:#aaa">El QR caduca; si deja de funcionar, espera a que aparezca uno nuevo.</p><small style="color:#666">Actualizado: ${currentQrUpdatedAt || ''}</small></main></body></html>`);
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({
         status: 'online',
         bot: 'WhatsApp Bot US',
+        qr: '/qr?token=TOKEN_PRIVADO',
         time: new Date().toISOString(),
         auth_mode: process.env.MONGODB_URI ? 'MongoDB Atlas' : 'Local Disk'
     }));
 });
 server.listen(PORT, () => {
-    console.log(`[HTTP] Servidor de salud activo en puerto ${PORT}`);
+    console.log(`[HTTP] Servidor activo en puerto ${PORT}`);
+    console.log(`[QR] Panel privado: /qr?token=${qrAccessToken}`);
 });
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
@@ -58,18 +81,35 @@ async function startBot() {
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
-    // Manejo de vinculación (Pairing Code o QR)
+    // Escucha siempre los cambios de conexión: el QR también se publica en el panel web.
+    sock.ev.on('connection.update', async (update) => {
+        const { qr } = update;
+        if (qr) {
+            try {
+                currentQrDataUrl = await QRCode.toDataURL(qr, {
+                    width: 440,
+                    margin: 2,
+                    errorCorrectionLevel: 'M'
+                });
+                currentQrUpdatedAt = new Date().toISOString();
+                console.log('[QR] Nuevo código disponible en el panel web.');
+                if (process.stdin.isTTY) {
+                    console.log('\n[BOT] Escanea este código QR con WhatsApp:');
+                    qrcodeTerminal.generate(qr, { small: true });
+                }
+            } catch (err) {
+                console.error('[QR] No se pudo preparar la imagen:', err.message);
+            }
+        }
+    });
+
+    // En hosting no interactivo se genera QR automáticamente; no se bloquea esperando readline.
     if (!sock.authState.creds.registered) {
         let phoneNumber = process.env.PAIRING_NUMBER;
 
-        if (!phoneNumber) {
-            console.log('\n======================================================');
-            console.log(' MODO DE VINCULACIÓN');
-            console.log(' 1. Introduce tu número de EE.UU. (ej. 15551234567)');
-            console.log('    para vincular con código de 8 dígitos en WhatsApp.');
-            console.log(' 2. O presiona ENTER para mostrar código QR.');
-            console.log('======================================================\n');
-            phoneNumber = await question('Número de teléfono con código de país o ENTER: ');
+        if (!phoneNumber && process.stdin.isTTY) {
+            console.log('\nMODO DE VINCULACIÓN: escribe tu número para recibir código o ENTER para QR.');
+            phoneNumber = await question('Número con código de país o ENTER: ');
         }
 
         if (phoneNumber) {
@@ -80,22 +120,15 @@ async function startBot() {
                     console.log('\n------------------------------------------------------');
                     console.log(` CÓDIGO DE VINCULACIÓN PARA ${cleanNumber}:`);
                     console.log(` >>> ${code} <<<`);
-                    console.log(' En tu WhatsApp ve a:');
-                    console.log(' Ajustes > Dispositivos vinculados > Vincular un dispositivo');
-                    console.log(' > "Vincular con el número de teléfono" e ingresa el código.');
+                    console.log(' En WhatsApp: Ajustes > Dispositivos vinculados > Vincular un dispositivo');
+                    console.log(' > Vincular con el número de teléfono e ingresa el código.');
                     console.log('------------------------------------------------------\n');
                 } catch (err) {
                     console.error('[BOT] Error al solicitar código de vinculación:', err.message);
                 }
             }, 3000);
         } else {
-            sock.ev.on('connection.update', (update) => {
-                const { qr } = update;
-                if (qr) {
-                    console.log('\n[BOT] Escanea este código QR con WhatsApp:');
-                    qrcodeTerminal.generate(qr, { small: true });
-                }
-            });
+            console.log('[BOT] Esperando QR de WhatsApp; abre el panel privado indicado arriba.');
         }
     }
 
