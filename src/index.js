@@ -94,7 +94,8 @@ function question(query) {
 
 async function startBot() {
     // Carga de estado de sesión (MongoDB Atlas si existe MONGODB_URI, si no local)
-    const { state, saveCreds } = await getAuthState(process.env.MONGODB_URI, 'session_us');
+    const authSessionName = process.env.AUTH_SESSION_NAME || 'session_us';
+    const { state, saveCreds } = await getAuthState(process.env.MONGODB_URI, authSessionName);
     console.log(`[AUTH] Estado cargado: registered=${Boolean(state.creds.registered)}; cuenta vinculada=${Boolean(state.creds.me?.id)}`);
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`[BOT] Baileys v${version.join('.')} (Última: ${isLatest})`);
@@ -108,8 +109,14 @@ async function startBot() {
     });
 
     // Escucha siempre los cambios de conexión: el QR también se publica en el panel web.
+    let socketClosed = false;
+    let pairingTimeout = null;
     sock.ev.on('connection.update', async (update) => {
         const { qr, connection } = update;
+        if (connection === 'close') {
+            socketClosed = true;
+            if (pairingTimeout) clearTimeout(pairingTimeout);
+        }
         if (connection) {
             connectionStatus = connection === 'open' ? 'Conectado correctamente' : connection === 'connecting' ? 'Conectando…' : connectionStatus;
             connectionUpdatedAt = new Date().toISOString();
@@ -149,7 +156,11 @@ async function startBot() {
             connectionStatus = 'Solicitando código de vinculación…';
             connectionUpdatedAt = new Date().toISOString();
             const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
-            setTimeout(async () => {
+            pairingTimeout = setTimeout(async () => {
+                if (socketClosed) {
+                    console.warn('[BOT] Se omitió la solicitud de código: el socket ya está cerrado.');
+                    return;
+                }
                 try {
                     const code = await sock.requestPairingCode(cleanNumber);
                     currentPairingCode = code;
@@ -162,7 +173,7 @@ async function startBot() {
                     console.log(' > Vincular con el número de teléfono e ingresa el código.');
                     console.log('------------------------------------------------------\n');
                 } catch (err) {
-                    connectionStatus = `Error al solicitar código: ${err.message}`;
+                    connectionStatus = 'No se pudo solicitar el código. Revisa los logs del servicio.';
                     connectionUpdatedAt = new Date().toISOString();
                     console.error('[BOT] Error al solicitar código de vinculación:', err.message);
                 }
