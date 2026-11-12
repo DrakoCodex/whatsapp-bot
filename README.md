@@ -67,6 +67,18 @@ Bot de WhatsApp basado en Node.js y Baileys. Incluye stickers, QR, consultas con
 - Las herramientas de grupo funcionan en grupos; los sorteos/equipos aceptan menciones o nombres separados por comas.
 - Las consultas DNI y tipo de cambio dependen de la configuración externa existente. No uses el bot para consultar o divulgar datos personales sin autorización.
 
+## Vincular WhatsApp mediante código (sin QR)
+
+Baileys permite vincular la cuenta mediante un código de emparejamiento. Esta opción ya está implementada en `src/index.js` y se activa con `PAIRING_NUMBER`:
+
+1. En Render, abre el servicio y entra en **Environment**.
+2. Añade `PAIRING_NUMBER` con el número de WhatsApp que vas a vincular, en formato internacional y solo dígitos (por ejemplo, `519XXXXXXXX`; sin `+`, espacios ni guiones).
+3. Guarda y despliega/reinicia el servicio. En **Logs** aparecerá el código temporal de vinculación.
+4. En el teléfono que tiene esa cuenta de WhatsApp, abre **Ajustes → Dispositivos vinculados → Vincular un dispositivo → Vincular con número de teléfono** e introduce el código mostrado en Render.
+5. Cuando la conexión se complete, Baileys guardará las credenciales usando el almacenamiento configurado (`MONGODB_URI` si está disponible).
+
+Si prefieres usar QR, deja `PAIRING_NUMBER` sin configurar. No compartas el código de vinculación ni las credenciales de sesión: permiten acceder a tu cuenta.
+
 ## Variables de entorno
 
 Configura en el hosting las variables que ya utiliza el proyecto, como `MONGODB_URI`, `DECOLECTA_TOKEN`, `QR_ACCESS_TOKEN`, `PAIRING_NUMBER`, `AUTO_REPLY` y las variables de stickers. No publiques sus valores.

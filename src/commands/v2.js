@@ -22,7 +22,7 @@ export async function handleV2Command(sock, from, msg, rawText) {
       '🏅 *PROGRESO*\n/daily · Recompensa diaria\n/perfil · Tu nivel y XP\n/top · Ranking\n/misiones · Retos\n\n' +
       '⚙️ *SISTEMA*\n/ping · Latencia\n/info · Estado\n\n' +
       '━━━━━━━━━━━━━━━━━━━━\n🆓 Los módulos nuevos funcionan localmente y no requieren API de pago. Los estados temporales se reinician si el proceso se reinicia.'
-    ) }, { quoted: msg });
+    }, { quoted: msg });
     return true;
   }
 
