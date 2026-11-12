@@ -6,6 +6,10 @@ import { BufferJSON, initAuthCreds, useMultiFileAuthState } from '@whiskeysocket
  * Si no se proporciona uri o si la conexión falla, recurre a archivos locales en ./session_auth.
  */
 export async function getAuthState(mongoUri, sessionName = 'default') {
+    if (!/^[a-zA-Z0-9_-]{1,48}$/.test(sessionName)) {
+        throw new Error('AUTH_SESSION_NAME solo puede contener letras, números, guion y guion bajo (máximo 48 caracteres).');
+    }
+
     if (!mongoUri) {
         console.log('[AUTH] Usando almacenamiento local de sesión (./session_auth)');
         return await useMultiFileAuthState('./session_auth');
@@ -23,7 +27,9 @@ export async function getAuthState(mongoUri, sessionName = 'default') {
         console.log('[AUTH] ¡Conectado exitosamente a MongoDB Atlas!');
 
         const db = client.db('whatsapp_bot');
-        const collection = db.collection(`session_${sessionName}`);
+        const collectionName = `session_${sessionName}`;
+        const collection = db.collection(collectionName);
+        console.log(`[AUTH] Colección de sesión seleccionada: ${collectionName}`);
 
         const writeData = async (data, id) => {
             try {
