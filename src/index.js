@@ -13,6 +13,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { createSticker } from './sticker.js';
 import { handleFreeCommand } from './commands/free.js';
+import { handleV2Command } from './commands/v2.js';
 import { getAuthState } from './mongoAuth.js';
 import { consultarDni, consultarTipoCambio } from './services/decolecta.js';
 
@@ -182,10 +183,11 @@ async function startBot() {
             );
 
             // Comandos gratuitos y minijuegos (se procesan antes de los comandos antiguos).
+            if (await handleV2Command(sock, from, msg, text)) continue;
             if (await handleFreeCommand(sock, from, msg, text)) continue;
 
             // 1. COMANDO: STICKER (/s o /sticker o auto-sticker)
-            const stickerCommand = /^\/(s|sticker)(?:\\s|$)/i.test(text);
+            const stickerCommand = /^\/(s|sticker)(?:\s|$)/i.test(text);
             const isStickerCommand = stickerCommand ||
                                      (process.env.AUTO_STICKER === 'true' && isImage && !text.startsWith('/'));
 
